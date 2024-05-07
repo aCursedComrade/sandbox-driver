@@ -7,11 +7,9 @@ DRIVER_INITIALIZE DriverEntry;
 DRIVER_UNLOAD BoxDrvUnload;
 
 // IRP major functions
-_Dispatch_type_(IRP_MJ_CREATE) DRIVER_DISPATCH BoxDrvCreate;
-_Dispatch_type_(IRP_MJ_CLOSE) DRIVER_DISPATCH BoxDrvClose;
-_Dispatch_type_(IRP_MJ_DEVICE_CONTROL) DRIVER_DISPATCH BoxDrvIoControl;
-_Dispatch_type_(IRP_MJ_READ) DRIVER_DISPATCH BoxDrvRead;
-_Dispatch_type_(IRP_MJ_WRITE) DRIVER_DISPATCH BoxDrvWrite;
-
-// Registry callback functions
-//NTSTATUS BoxDrvRegistryCallback(_In_ PVOID CallbackContext, _In_ PVOID Arg1, _In_ PVOID Arg2);
+NTSTATUS BoxDrvCreateClose(_In_ PDEVICE_OBJECT pDeviceObject, _Inout_ PIRP Irp);
+NTSTATUS BoxDrvCleanup(_In_ PDEVICE_OBJECT pDeviceObject, _Inout_ PIRP Irp);
+NTSTATUS BoxDrvIoControl(_In_ PDEVICE_OBJECT pDeviceObject, _Inout_ PIRP Irp);
+NTSTATUS BoxDrvRead(_In_ PDEVICE_OBJECT pDeviceObject, _Inout_ PIRP Irp);
+NTSTATUS BoxDrvWrite(_In_ PDEVICE_OBJECT pDeviceObject, _Inout_ PIRP Irp);
+NTSTATUS BoxDrvUnsupported(_In_ PDEVICE_OBJECT pDeviceObject, _Inout_ PIRP Irp);

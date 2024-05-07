@@ -1,13 +1,18 @@
 #include "driver.h"
 #include "util.h"
+#include "registry.h"
 
 #pragma alloc_text(INIT, DriverEntry)
 #pragma alloc_text(PAGE, BoxDrvUnload)
-#pragma alloc_text(PAGE, BoxDrvCreate)
-#pragma alloc_text(PAGE, BoxDrvClose)
+#pragma alloc_text(PAGE, BoxDrvCreateClose)
+#pragma alloc_text(PAGE, BoxDrvCleanup)
 #pragma alloc_text(PAGE, BoxDrvIoControl)
 #pragma alloc_text(PAGE, BoxDrvRead)
 #pragma alloc_text(PAGE, BoxDrvWrite)
+
+// Global vaiables
+
+// Core driver definitions
 
 NTSTATUS DriverEntry(_In_ PDRIVER_OBJECT pDriverObject, _In_ PUNICODE_STRING pRegistryPath) {
 	UNREFERENCED_PARAMETER(pRegistryPath);
@@ -16,7 +21,14 @@ NTSTATUS DriverEntry(_In_ PDRIVER_OBJECT pDriverObject, _In_ PUNICODE_STRING pRe
 	PDEVICE_OBJECT pDeviceObject = NULL;
 	UNICODE_STRING ntDevice, dosDevice;
 
-	DbgPrint("BoxDrv: DriverEntry\r\n");
+	DbgPrint("BoxDrv: DriverEntry invoked\r\n");
+
+	// Register our registry filter
+	status = BoxDrvInitRegFilter(pDriverObject);
+	if (!NT_SUCCESS(status)) {
+		DbgPrint("BoxDrv: Failed to register our registry filter\r\n");
+		return status;
+	}
 
 	RtlInitUnicodeString(&ntDevice, NT_DEVICE_NAME);
 	RtlInitUnicodeString(&dosDevice, DOS_DEViCE_NAME);
@@ -33,27 +45,32 @@ NTSTATUS DriverEntry(_In_ PDRIVER_OBJECT pDriverObject, _In_ PUNICODE_STRING pRe
 	);
 
 	if (!NT_SUCCESS(status)) {
-		DbgPrint("BoxDrv: Failed to create device");
+		DbgPrint("BoxDrv: Failed to create device\r\n");
 		return status;
 	}
 
-	// setup the driver functions
-	pDriverObject->MajorFunction[IRP_MJ_CREATE] = BoxDrvCreate;
-	pDriverObject->MajorFunction[IRP_MJ_CLOSE] = BoxDrvClose;
+	// initiate all major functions to unsupported
+	for (UINT32 findex = 0; findex < IRP_MJ_MAXIMUM_FUNCTION; findex++) {
+		pDriverObject->MajorFunction[findex] = BoxDrvUnsupported;
+	}
+
+	// setup the supported driver functions
+	pDriverObject->MajorFunction[IRP_MJ_CREATE] = BoxDrvCreateClose;
+	pDriverObject->MajorFunction[IRP_MJ_CLOSE] = BoxDrvCreateClose;
+	pDriverObject->MajorFunction[IRP_MJ_CLEANUP] = BoxDrvCleanup;
 	pDriverObject->MajorFunction[IRP_MJ_DEVICE_CONTROL] = BoxDrvIoControl;
 	pDriverObject->MajorFunction[IRP_MJ_READ] = BoxDrvRead;
 	pDriverObject->MajorFunction[IRP_MJ_WRITE] = BoxDrvWrite;
 	pDriverObject->DriverUnload = BoxDrvUnload;
 
-	// driver flags
-	// - we set preferred mode of IO
-	pDriverObject->Flags |= DO_BUFFERED_IO;
+	// device flags
+	// - we set preferred mode of IO (Buffered IO)
+	pDeviceObject->Flags |= DO_BUFFERED_IO;
 
 	// link DOS and NT device names
 	status = IoCreateSymbolicLink(&dosDevice, &ntDevice);
-
 	if (!NT_SUCCESS(status)) {
-		DbgPrint("BoxDrv: Failed to create symbolic link");
+		DbgPrint("BoxDrv: Failed to create device symbolic link\r\n");
 		IoDeleteDevice(pDeviceObject);
 		return status;
 	}
@@ -67,6 +84,8 @@ VOID BoxDrvUnload(_In_ PDRIVER_OBJECT pDriverObject) {
 
 	PAGED_CODE();
 
+	BoxDrvRemoveRegFilter();
+
 	RtlInitUnicodeString(&dosDevice, DOS_DEViCE_NAME);
 
 	// tear down virtual device in when unloading
@@ -78,7 +97,7 @@ VOID BoxDrvUnload(_In_ PDRIVER_OBJECT pDriverObject) {
 	DbgPrint("BoxDrv: Driver unloaded\r\n");
 }
 
-NTSTATUS BoxDrvCreate(_In_ PDEVICE_OBJECT pDeviceObject, _Inout_ PIRP Irp) {
+NTSTATUS BoxDrvCreateClose(_In_ PDEVICE_OBJECT pDeviceObject, _Inout_ PIRP Irp) {
 	UNREFERENCED_PARAMETER(pDeviceObject);
 	PAGED_CODE();
 
@@ -87,12 +106,12 @@ NTSTATUS BoxDrvCreate(_In_ PDEVICE_OBJECT pDeviceObject, _Inout_ PIRP Irp) {
 
 	IoCompleteRequest(Irp, IO_NO_INCREMENT);
 
-	DbgPrint("BoxDrv: Create function called\r\n");
+	DbgPrint("BoxDrv: IRP_MJ_CREATE/CLOSE completed\r\n");
 
 	return STATUS_SUCCESS;
 }
 
-NTSTATUS BoxDrvClose(_In_ PDEVICE_OBJECT pDeviceObject, _Inout_ PIRP Irp) {
+NTSTATUS BoxDrvCleanup(_In_ PDEVICE_OBJECT pDeviceObject, _Inout_ PIRP Irp) {
 	UNREFERENCED_PARAMETER(pDeviceObject);
 	PAGED_CODE();
 
@@ -101,7 +120,7 @@ NTSTATUS BoxDrvClose(_In_ PDEVICE_OBJECT pDeviceObject, _Inout_ PIRP Irp) {
 
 	IoCompleteRequest(Irp, IO_NO_INCREMENT);
 
-	DbgPrint("BoxDrv: Close function called\r\n");
+	DbgPrint("BoxDrv: IRP_MJ_CLEANUP completed\r\n");
 
 	return STATUS_SUCCESS;
 }
@@ -115,6 +134,8 @@ NTSTATUS BoxDrvIoControl(_In_ PDEVICE_OBJECT pDeviceObject, _Inout_ PIRP Irp) {
 
 	IoCompleteRequest(Irp, IO_NO_INCREMENT);
 
+	DbgPrint("BoxDrv: IOCTL request complete\r\n");
+
 	return STATUS_SUCCESS;
 }
 
@@ -127,6 +148,8 @@ NTSTATUS BoxDrvRead(_In_ PDEVICE_OBJECT pDeviceObject, _Inout_ PIRP Irp) {
 
 	IoCompleteRequest(Irp, IO_NO_INCREMENT);
 
+	DbgPrint("BoxDrv: IRP_MJ_READ completed\r\n");
+
 	return STATUS_SUCCESS;
 }
 
@@ -134,11 +157,12 @@ NTSTATUS BoxDrvWrite(_In_ PDEVICE_OBJECT pDeviceObject, _Inout_ PIRP Irp) {
 	NTSTATUS status = STATUS_SUCCESS;
 	PIO_STACK_LOCATION pIrpStack = NULL;
 	char* writeBuffer = NULL;
+	ULONG bufferLen = 0;
 
 	UNREFERENCED_PARAMETER(pDeviceObject);
 	PAGED_CODE();
 
-	DbgPrint("BoxDrv: Write function called\r\n");
+	DbgPrint("BoxDrv: ==> IRP_MJ_WRITE\r\n");
 
 	pIrpStack = IoGetCurrentIrpStackLocation(Irp);
 
@@ -146,16 +170,35 @@ NTSTATUS BoxDrvWrite(_In_ PDEVICE_OBJECT pDeviceObject, _Inout_ PIRP Irp) {
 		writeBuffer = (char*)Irp->AssociatedIrp.SystemBuffer;
 
 		if (writeBuffer) {
-			if (IsStringTerminated(writeBuffer, pIrpStack->Parameters.Write.Length)) {
-				DbgPrint("BoxDrv: %s", writeBuffer);
+			bufferLen = pIrpStack->Parameters.Write.Length;
+			DbgPrint("BoxDrv: Buffer length: %lu\r\n", bufferLen);
+
+			if (IsStringTerminated(writeBuffer, bufferLen)) {
+				DbgPrint("BoxDrv: Buffer: %s\r\n", writeBuffer);
 			}
 		}
 	}
 
 	Irp->IoStatus.Status = status;
+	Irp->IoStatus.Information = bufferLen;
+
+	IoCompleteRequest(Irp, IO_NO_INCREMENT);
+
+	DbgPrint("BoxDrv: <== IRP_MJ_WRITE\r\n");
+
+	return status;
+}
+
+NTSTATUS BoxDrvUnsupported(_In_ PDEVICE_OBJECT pDeviceObject, _Inout_ PIRP Irp) {
+	UNREFERENCED_PARAMETER(pDeviceObject);
+	PAGED_CODE();
+
+	DbgPrint("BoxDrv: Unsupported IRP_MJ_* called\r\n");
+
+	Irp->IoStatus.Status = STATUS_NOT_SUPPORTED;
 	Irp->IoStatus.Information = 0;
 
 	IoCompleteRequest(Irp, IO_NO_INCREMENT);
 
-	return status;
+	return STATUS_NOT_SUPPORTED;
 }
