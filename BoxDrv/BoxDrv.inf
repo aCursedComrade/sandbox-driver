@@ -8,7 +8,7 @@ Class       = System ; TODO: specify appropriate Class
 ClassGuid   = {4d36e97d-e325-11ce-bfc1-08002be10318} ; TODO: specify appropriate ClassGuid
 Provider    = %ManufacturerName%
 CatalogFile = BoxDrv.cat
-DriverVer   = ; TODO: set DriverVer in stampinf property pages
+DriverVer   = ; DriverVer is automatically set (or set in stampinf property page)
 PnpLockdown = 1
 
 [DestinationDirs]
@@ -23,24 +23,23 @@ BoxDrv.sys = 1,,
 ;*****************************************
 ; Install Section
 ;*****************************************
+; https://learn.microsoft.com/en-us/windows-hardware/drivers/develop/creating-a-primitive-driver
 
-[Manufacturer]
-%ManufacturerName% = Standard,NT$ARCH$.10.0...16299 ; %13% support introduced in build 16299
+[DefaultInstall.NTamd64]
+CopyFiles = BoxDrv_Files
 
-[Standard.NT$ARCH$.10.0...16299]
-%BoxDrv.DeviceDesc% = BoxDrv_Device, Root\BoxDrv ; TODO: edit hw-id
+[DefaultInstall.NTx86]
+CopyFiles = BoxDrv_Files
 
-[BoxDrv_Device.NT]
-CopyFiles = File_Copy
+[DefaultInstall.NTamd64.Services]
+AddService = BoxDrv,,BoxDrv_Service
 
-[File_Copy]
+[DefaultInstall.NTx86.Services]
+AddService = BoxDrv,,BoxDrv_Service
+
+[BoxDrv_Files]
 BoxDrv.sys
 
-;-------------- Service installation
-[BoxDrv_Device.NT.Services]
-AddService = BoxDrv,2,BoxDrv_Service
-
-; -------------- BoxDrv driver install sections
 [BoxDrv_Service]
 Description	   = %BoxDrv.SVCDESC%
 ServiceType    = 1               ; SERVICE_KERNEL_DRIVER
@@ -49,7 +48,7 @@ ErrorControl   = 1               ; SERVICE_ERROR_NORMAL
 ServiceBinary  = %13%\BoxDrv.sys
 
 [Strings]
-ManufacturerName = "aCursedComrade" ;TODO: Replace with your manufacturer name
+ManufacturerName = "aCursedComrade"
 DiskName = "BoxDrv Installation Disk"
 BoxDrv.DeviceDesc = "BoxDrv Device"
 BoxDrv.SVCDESC = "BoxDrv Service"
