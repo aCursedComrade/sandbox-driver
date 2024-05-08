@@ -30,10 +30,10 @@
     <ClCompile Include="util.c">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="registry.c">
+    <ClCompile Include="regFilter.c">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="fsWatch.c">
+    <ClCompile Include="fsFilter.c">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
@@ -47,10 +47,10 @@
     <ClInclude Include="base.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="registry.h">
+    <ClInclude Include="regFilter.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="fsWatch.h">
+    <ClInclude Include="fsFilter.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>
