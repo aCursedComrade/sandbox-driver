@@ -19,6 +19,7 @@ NTSTATUS BoxDrvIoEcho(_In_ PIRP Irp, _In_ PIO_STACK_LOCATION pIrpStack, _Out_ UI
 
 	PAGED_CODE();
 
+	KdPrint(("BoxDrv: BoxDrvIoEcho\r\n"));
 	pInputBuffer = Irp->AssociatedIrp.SystemBuffer;
 	pOutputBuffer = Irp->AssociatedIrp.SystemBuffer;
 
@@ -27,17 +28,13 @@ NTSTATUS BoxDrvIoEcho(_In_ PIRP Irp, _In_ PIO_STACK_LOCATION pIrpStack, _Out_ UI
 		bufOutsize = pIrpStack->Parameters.DeviceIoControl.OutputBufferLength;
 
 		if (BoxDrvIsStringTerminated(pInputBuffer, bufInSize)) {
-			KdPrint(("BoxDrv: BoxDrvIoEcho: Echo message: %s\r\n", pInputBuffer));
-			KdPrint(("BoxDrv: BoxDrvIoEcho: In buffer size: %lu\r\n", bufInSize));
-			KdPrint(("BoxDrv: BoxDrvIoEcho: Out buffer size: %lu\r\n", bufOutsize));
-
 			if (bufOutsize >= bufInSize) {
 				RtlCopyMemory(pOutputBuffer, pInputBuffer, bufInSize);
 				status = STATUS_SUCCESS;
 				writeSize = bufInSize;
 			}
 			else {
-				KdPrint(("BoxDrv: BoxDrvIoEcho: Output buffer is too small!"));
+				KdPrint(("BoxDrv: BoxDrvIoEcho: Output buffer is too small!\r\n"));
 				status = STATUS_BUFFER_TOO_SMALL;
 			}
 		}
@@ -55,14 +52,12 @@ NTSTATUS BoxDrvIoReadList(_In_ PIRP Irp, _In_ PIO_STACK_LOCATION pIrpStack, _Out
 
 	PAGED_CODE();
 
+	KdPrint(("BoxDrv: BoxDrvIoReadList\r\n"));
 	pOutputBuffer = Irp->AssociatedIrp.SystemBuffer;
 
 	if (pOutputBuffer) {
 		bufOutsize = pIrpStack->Parameters.DeviceIoControl.OutputBufferLength;
 		ULONG stateSize = sizeof(stateInfo.watchlist);
-
-		KdPrint(("BoxDrv: BoxDrvReadList: Out buffer size: %lu\r\n", bufOutsize));
-		KdPrint(("BoxDrv: BoxDrvReadList: State size: %lu\r\n", stateSize));
 
 		if (bufOutsize >= stateSize) {
 			RtlCopyMemory(pOutputBuffer, stateInfo.watchlist, stateSize);
@@ -70,7 +65,7 @@ NTSTATUS BoxDrvIoReadList(_In_ PIRP Irp, _In_ PIO_STACK_LOCATION pIrpStack, _Out
 			writeSize = stateSize;
 		}
 		else {
-			KdPrint(("BoxDrv: BoxDrvReadList: Output buffer is too small!"));
+			KdPrint(("BoxDrv: BoxDrvReadList: Output buffer is too small!\r\n"));
 			status = STATUS_BUFFER_TOO_SMALL;
 		}
 	}
@@ -87,22 +82,26 @@ NTSTATUS BoxDrvIoWriteList(_In_ PIRP Irp, _In_ PIO_STACK_LOCATION pIrpStack, _Ou
 
 	PAGED_CODE();
 
+	KdPrint(("BoxDrv: BoxDrvIoWriteList\r\n"));
 	pInputBuffer = Irp->AssociatedIrp.SystemBuffer;
 
 	if (pInputBuffer) {
 		bufInsize = pIrpStack->Parameters.DeviceIoControl.InputBufferLength;
-		ULONG stateSize = sizeof(stateInfo.watchlist);
+		ULONG typeSize = sizeof(TRACK_TYPE);
 
-		KdPrint(("BoxDrv: BoxDrvIoWriteList: In buffer size: %lu\r\n", bufInsize));
-		KdPrint(("BoxDrv: BoxDrvIoWriteList: State size: %lu\r\n", stateSize));
-
-		if (bufInsize <= stateSize) {
-			RtlCopyMemory(stateInfo.watchlist, pInputBuffer, bufInsize);
-			status = STATUS_SUCCESS;
-			writeSize = bufInsize;
+		if (bufInsize <= typeSize) {
+			if (BoxDrvAddToWatchlist(*(HANDLE*)pInputBuffer)) {
+				KdPrint(("BoxDrv: BoxDrvIoWriteList: Added PID %llu to the watch list\r\n", *(ULONG_PTR*)pInputBuffer));
+				status = STATUS_SUCCESS;
+				writeSize = typeSize;
+			}
+			else {
+				KdPrint(("BoxDrv: BoxDrvIoWriteList: No space left in state list!\r\n"));
+				status = STATUS_BUFFER_OVERFLOW;
+			}
 		}
 		else {
-			KdPrint(("BoxDrv: BoxDrvIoWriteList: Input buffer overflows state!"));
+			KdPrint(("BoxDrv: BoxDrvIoWriteList: Input buffer is larger than the expected size!\r\n"));
 			status = STATUS_BUFFER_OVERFLOW;
 		}
 	}

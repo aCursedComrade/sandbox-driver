@@ -9,4 +9,8 @@ typedef NTSTATUS(*QUERY_INFO_PROCESS) (
 	_Out_opt_ PULONG           ReturnLength
 );
 
-NTSTATUS BoxDrvGetProcessName(_In_ PEPROCESS pProcess, _Out_ PUNICODE_STRING* pProcessImageName);
+NTSTATUS BoxDrvProcRegister();
+VOID BoxDrvProcUnload();
+
+VOID BoxDrvProcMonitor(_In_ HANDLE ppid, _In_ HANDLE pid, _In_ BOOLEAN create);
+NTSTATUS BoxDrvProcGetName(_In_ PEPROCESS pProcess, _Out_ PUNICODE_STRING* pProcessImageName);

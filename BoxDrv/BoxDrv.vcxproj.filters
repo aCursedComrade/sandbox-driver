@@ -33,9 +33,6 @@
     <ClCompile Include="regFilter.c">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="fsFilter.c">
-      <Filter>Source Files</Filter>
-    </ClCompile>
     <ClCompile Include="proc.c">
       <Filter>Source Files</Filter>
     </ClCompile>
@@ -54,9 +51,6 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="regFilter.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="fsFilter.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="proc.h">

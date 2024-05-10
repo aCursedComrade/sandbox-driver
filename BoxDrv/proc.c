@@ -1,14 +1,51 @@
 #include "proc.h"
+#include "util.h"
 
-#pragma alloc_text(PAGE, BoxDrvGetProcessName)
+#pragma alloc_text(INIT, BoxDrvProcRegister)
+#pragma alloc_text(PAGE, BoxDrvProcUnload)
+#pragma alloc_text(PAGE, BoxDrvProcMonitor)
+#pragma alloc_text(PAGE, BoxDrvProcGetName)
 
 // Global variables
 
+extern BoxDrvState stateInfo;
 PVOID ZwQueryInformationProcess = NULL;
 
 // Definitions
 
-NTSTATUS BoxDrvGetProcessName(_In_ PEPROCESS pProcess, _Out_ PUNICODE_STRING* pProcessImageName) {
+NTSTATUS BoxDrvProcRegister() {
+	return PsSetCreateProcessNotifyRoutine(BoxDrvProcMonitor, FALSE);
+}
+
+VOID BoxDrvProcUnload() {
+	PAGED_CODE();
+
+	NTSTATUS status = PsSetCreateProcessNotifyRoutine(BoxDrvProcMonitor, TRUE);
+	if (!NT_SUCCESS(status)) {
+		KdPrint(("BoxDrv: Failed to unregister process monitor\r\n"));
+	}
+}
+
+VOID BoxDrvProcMonitor(_In_ HANDLE ppid, _In_ HANDLE pid, _In_ BOOLEAN create) {
+	PAGED_CODE();
+
+	if (create) {
+		// If create is TRUE, its a process creation
+		if (BoxDrvIsInWatchlist(ppid)) {
+			KdPrint(("BoxDrv: BoxDrvProcMonitor: New process with PID %llu created by %llu added to watch list\r\n", (ULONG_PTR)pid, (ULONG_PTR)ppid));
+			BoxDrvAddToWatchlist(pid);
+		}
+	}
+	else {
+		// If create is FALSE, its a process termination
+		if (BoxDrvIsInWatchlist(pid)) {
+			KdPrint(("BoxDrv: BoxDrvProcMonitor: Terminating process with PID %llu removed from watch list\r\n", (ULONG_PTR)pid));
+			BoxDrvRemoveFromWatchlist(pid);
+		}
+	}
+}
+
+NTSTATUS BoxDrvProcGetName(_In_ PEPROCESS pProcess, _Out_ PUNICODE_STRING* pProcessImageName) {
 	NTSTATUS status = STATUS_UNSUCCESSFUL;
 
 	UNREFERENCED_PARAMETER(pProcess);

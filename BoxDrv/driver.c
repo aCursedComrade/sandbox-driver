@@ -1,7 +1,7 @@
 #include "driver.h"
 #include "util.h"
+#include "proc.h"
 #include "regFilter.h"
-#include "fsFilter.h"
 #include "ioctl.h"
 
 #pragma alloc_text(INIT, DriverEntry)
@@ -76,10 +76,19 @@ NTSTATUS DriverEntry(_In_ PDRIVER_OBJECT pDriverObject, _In_ PUNICODE_STRING pRe
 		return STATUS_FAILED_DRIVER_ENTRY;
 	}
 
+	// Register process for process spawn events
+	status = BoxDrvProcRegister();
+	if (!NT_SUCCESS(status)) {
+		KdPrint(("BoxDrv: Failed to register our process monitor\r\n"));
+		IoDeleteDevice(pDeviceObject);
+		return STATUS_FAILED_DRIVER_ENTRY;
+	}
+
 	// Register our registry filter
 	status = BoxDrvRegFilterInit(pDriverObject);
 	if (!NT_SUCCESS(status)) {
 		KdPrint(("BoxDrv: Failed to register our registry filter\r\n"));
+		IoDeleteDevice(pDeviceObject);
 		return STATUS_FAILED_DRIVER_ENTRY;
 	}
 
@@ -92,10 +101,15 @@ VOID BoxDrvUnload(_In_ PDRIVER_OBJECT pDriverObject) {
 
 	PAGED_CODE();
 
+	// Unregister our process monitor
+	BoxDrvProcUnload();
+
+	// Unregister our registry filter
 	BoxDrvRegFilterUnload();
 
 	RtlInitUnicodeString(&dosDevice, DOS_DEViCE_NAME);
 
+	// Tear down devices
 	IoDeleteSymbolicLink(&dosDevice);
 	if (pDeviceObject != NULL) {
 		IoDeleteDevice(pDeviceObject);

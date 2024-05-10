@@ -2,6 +2,8 @@
 
 #pragma alloc_text(PAGE, BoxDrvIsStringTerminated)
 #pragma alloc_text(PAGE, BoxDrvIsInWatchlist)
+#pragma alloc_text(PAGE, BoxDrvAddToWatchlist)
+#pragma alloc_text(PAGE, BoxDrvRemoveFromWatchlist)
 
 // Global variables
 
@@ -26,8 +28,8 @@ BOOLEAN BoxDrvIsStringTerminated(_In_ PCHAR pString, _In_ UINT32 length) {
 	return terminated;
 }
 
-BOOLEAN BoxDrvIsInWatchlist(_In_ HANDLE pid) {
-	UINT32 stateLen = sizeof(stateInfo) / sizeof(HANDLE);
+BOOLEAN BoxDrvIsInWatchlist(_In_ TRACK_TYPE pid) {
+	UINT32 stateLen = sizeof(stateInfo) / sizeof(TRACK_TYPE);
 
 	PAGED_CODE();
 
@@ -36,4 +38,31 @@ BOOLEAN BoxDrvIsInWatchlist(_In_ HANDLE pid) {
 	}
 
 	return FALSE;
+}
+
+BOOLEAN BoxDrvAddToWatchlist(_In_ TRACK_TYPE pid) {
+	UINT32 stateLen = sizeof(stateInfo) / sizeof(TRACK_TYPE);
+	
+	PAGED_CODE();
+
+	for (UINT32 index = 0; index < stateLen; index++) {
+		if (stateInfo.watchlist[index] == 0) {
+			stateInfo.watchlist[index] = pid;
+			return TRUE;
+		};
+	}
+
+	return FALSE;
+}
+
+VOID BoxDrvRemoveFromWatchlist(_In_ TRACK_TYPE pid) {
+	UINT32 stateLen = sizeof(stateInfo) / sizeof(TRACK_TYPE);
+
+	PAGED_CODE();
+
+	for (UINT32 index = 0; index < stateLen; index++) {
+		if (stateInfo.watchlist[index] == pid) {
+			stateInfo.watchlist[index] = 0;
+		};
+	}
 }
