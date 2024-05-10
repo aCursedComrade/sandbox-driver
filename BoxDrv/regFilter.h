@@ -5,10 +5,10 @@
 #define regFltAltitude			L"36000"
 
 // Initialize the registry filter
-NTSTATUS BoxDrvRegInitFilter(_In_ PDRIVER_OBJECT pDriverObject);
+NTSTATUS BoxDrvRegFilterInit(_In_ PDRIVER_OBJECT pDriverObject);
 
 // Unregister the registry filter
-VOID BoxDrvRegRemoveFilter();
+VOID BoxDrvRegFilterUnload();
 
 // Main registry event callback handler
 NTSTATUS BoxDrvRegCallbackHandler(_In_ PVOID callBackContext, _In_ PVOID notifyClass, _In_ PVOID callBackData);

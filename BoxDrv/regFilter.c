@@ -1,12 +1,15 @@
 #include "regFilter.h"
+#include "util.h"
 
-#pragma alloc_text(INIT, BoxDrvRegInitFilter)
-#pragma alloc_text(PAGE, BoxDrvRegRemoveFilter)
+#pragma alloc_text(INIT, BoxDrvRegFilterInit)
+#pragma alloc_text(PAGE, BoxDrvRegFilterUnload)
 #pragma alloc_text(PAGE, BoxDrvRegCallbackHandler)
-#pragma alloc_text(PAGE, BoxDrvRegPreOpenOrCreateKeyFn)
-#pragma alloc_text(PAGE, BoxDrvRegKeyHandleCloseFn)
+#pragma alloc_text(TEXT, BoxDrvRegPreOpenOrCreateKeyFn)
+#pragma alloc_text(TEXT, BoxDrvRegKeyHandleCloseFn)
 
-// Global vaiables
+// Global variables
+
+extern BoxDrvState stateInfo;
 
 // A "cookie" given by configuration manager for registry based actions
 LARGE_INTEGER cmCookie = { 0 };
@@ -19,7 +22,9 @@ PEX_CALLBACK_FUNCTION registryCallBackTable[MaxRegNtNotifyClass] = { 0 };
 // - CmCallbackGetKeyObjectIDEx must be followed by CmCallbackReleaseKeyObjectIDEx appropiately
 // - https://learn.microsoft.com/en-us/windows-hardware/drivers/kernel/handling-notifications
 
-NTSTATUS BoxDrvRegInitFilter(_In_ PDRIVER_OBJECT pDriverObject) {
+// Function definitions
+
+NTSTATUS BoxDrvRegFilterInit(_In_ PDRIVER_OBJECT pDriverObject) {
 	UNICODE_STRING altitude = RTL_CONSTANT_STRING(regFltAltitude);
 
 	// populate the global callback table
@@ -36,7 +41,7 @@ NTSTATUS BoxDrvRegInitFilter(_In_ PDRIVER_OBJECT pDriverObject) {
 	return CmRegisterCallbackEx(BoxDrvRegCallbackHandler, &altitude, pDriverObject, NULL, &cmCookie, NULL);
 }
 
-VOID BoxDrvRegRemoveFilter() {
+VOID BoxDrvRegFilterUnload() {
 	PAGED_CODE();
 
 	// bad things *can* happen if this fails
@@ -66,9 +71,12 @@ NTSTATUS BoxDrvRegCallbackHandler(_In_ PVOID callBackContext, _In_ PVOID notifyC
 NTSTATUS BoxDrvRegPreOpenOrCreateKeyFn(_In_ PVOID callBackContext, _In_ PVOID notifyClass, _In_ PREG_CREATE_KEY_INFORMATION_V1 callBackData) {
 	UNREFERENCED_PARAMETER(callBackContext);
 	UNREFERENCED_PARAMETER(notifyClass);
-	PAGED_CODE();
 
 	PUNICODE_STRING pCompleteName = NULL;
+	HANDLE pProcess = PsGetCurrentProcessId();
+
+	// let the request go through if it is not watchlist
+	if (!BoxDrvIsInWatchlist(pProcess)) return STATUS_SUCCESS;
 
 	// check if we can find the complete name for a given key if its a relative name
 	if (callBackData->CompleteName->Length == 0 || *callBackData->CompleteName->Buffer != OBJ_NAME_PATH_SEPARATOR) {
@@ -102,8 +110,10 @@ NTSTATUS BoxDrvRegPreOpenOrCreateKeyFn(_In_ PVOID callBackContext, _In_ PVOID no
 		}
 	}
 
+	// actual preprocessing is done here, like deciding if we want to allow or deny access
+	// we will choose to let the requests pass-through when we fail to resolve the complete path
 	if (pCompleteName) {
-		KdPrint(("BoxDev: PreOpenOrCreateKey: Absolute name is %wZ\r\n", pCompleteName));
+		KdPrint(("BoxDev: PreOpenOrCreateKey: Key accessed (by PID: %llu: %wZ\r\n", (ULONG_PTR)pProcess, pCompleteName));
 		ExFreePool(pCompleteName);
 	}
 
@@ -113,16 +123,19 @@ NTSTATUS BoxDrvRegPreOpenOrCreateKeyFn(_In_ PVOID callBackContext, _In_ PVOID no
 NTSTATUS BoxDrvRegKeyHandleCloseFn(_In_ PVOID callBackContext, _In_ PVOID notifyClass, _In_ PREG_KEY_HANDLE_CLOSE_INFORMATION callBackData) {
 	UNREFERENCED_PARAMETER(callBackContext);
 	UNREFERENCED_PARAMETER(notifyClass);
-	PAGED_CODE();
 
-	NTSTATUS status = STATUS_SUCCESS;
 	PCUNICODE_STRING pObjectName = NULL;
+	HANDLE pProcess = PsGetCurrentProcessId();
+
+	// let the request go through if it is not watchlist
+	if (!BoxDrvIsInWatchlist(pProcess)) return STATUS_SUCCESS;
 
 	// attempt to obtain the registry key name associated with the object
+	NTSTATUS status = STATUS_SUCCESS;
 	status = CmCallbackGetKeyObjectIDEx(&cmCookie, callBackData->Object, NULL, &pObjectName, 0);
 
 	if (NT_SUCCESS(status)) {
-		KdPrint(("BoxDev: KeyHandleCloseFn: Closing handle for %wZ\r\n", pObjectName));
+		KdPrint(("BoxDev: KeyHandleCloseFn: Closing handle for key (by PID: %llu): %wZ\r\n", (ULONG_PTR)pProcess, pObjectName));
 	}
 	else {
 		KdPrint(("BoxDev: KeyHandleCloseFn: Failed to resolve the object name\r\n"));

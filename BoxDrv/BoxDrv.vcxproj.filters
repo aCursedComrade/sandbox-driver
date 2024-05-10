@@ -36,6 +36,12 @@
     <ClCompile Include="fsFilter.c">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="proc.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="ioctl.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="driver.h">
@@ -51,6 +57,12 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="fsFilter.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="proc.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="ioctl.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

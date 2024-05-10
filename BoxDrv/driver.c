@@ -2,16 +2,23 @@
 #include "util.h"
 #include "regFilter.h"
 #include "fsFilter.h"
+#include "ioctl.h"
 
 #pragma alloc_text(INIT, DriverEntry)
 #pragma alloc_text(PAGE, BoxDrvUnload)
-#pragma alloc_text(PAGE, BoxDrvCreateClose)
-#pragma alloc_text(PAGE, BoxDrvCleanup)
 #pragma alloc_text(PAGE, BoxDrvIoControl)
-#pragma alloc_text(PAGE, BoxDrvRead)
-#pragma alloc_text(PAGE, BoxDrvWrite)
+#pragma alloc_text(PAGE, BoxDrvCreateClose)
+#pragma alloc_text(PAGE, BoxDrvReadWrite)
+#pragma alloc_text(PAGE, BoxDrvCleanup)
+#pragma alloc_text(PAGE, BoxDrvUnsupported)
 
-// Global vaiables
+// Driver-wide variables
+
+BoxDrvState stateInfo = {
+	{ (HANDLE)69420 },
+	0,
+	0,
+};
 
 // Core driver definitions
 
@@ -23,13 +30,6 @@ NTSTATUS DriverEntry(_In_ PDRIVER_OBJECT pDriverObject, _In_ PUNICODE_STRING pRe
 	UNICODE_STRING ntDevice, dosDevice;
 
 	KdPrint(("BoxDrv: DriverEntry invoked\r\n"));
-
-	// Register our registry filter
-	status = BoxDrvRegInitFilter(pDriverObject);
-	if (!NT_SUCCESS(status)) {
-		KdPrint(("BoxDrv: Failed to register our registry filter\r\n"));
-		return STATUS_FAILED_DRIVER_ENTRY;
-	}
 
 	RtlInitUnicodeString(&ntDevice, NT_DEVICE_NAME);
 	RtlInitUnicodeString(&dosDevice, DOS_DEViCE_NAME);
@@ -56,12 +56,12 @@ NTSTATUS DriverEntry(_In_ PDRIVER_OBJECT pDriverObject, _In_ PUNICODE_STRING pRe
 	}
 
 	// setup the supported driver functions
+	pDriverObject->MajorFunction[IRP_MJ_DEVICE_CONTROL] = BoxDrvIoControl;
 	pDriverObject->MajorFunction[IRP_MJ_CREATE] = BoxDrvCreateClose;
 	pDriverObject->MajorFunction[IRP_MJ_CLOSE] = BoxDrvCreateClose;
+	pDriverObject->MajorFunction[IRP_MJ_READ] = BoxDrvReadWrite;
+	pDriverObject->MajorFunction[IRP_MJ_WRITE] = BoxDrvReadWrite;
 	pDriverObject->MajorFunction[IRP_MJ_CLEANUP] = BoxDrvCleanup;
-	pDriverObject->MajorFunction[IRP_MJ_DEVICE_CONTROL] = BoxDrvIoControl;
-	pDriverObject->MajorFunction[IRP_MJ_READ] = BoxDrvRead;
-	pDriverObject->MajorFunction[IRP_MJ_WRITE] = BoxDrvWrite;
 	pDriverObject->DriverUnload = BoxDrvUnload;
 
 	// device flags
@@ -76,26 +76,74 @@ NTSTATUS DriverEntry(_In_ PDRIVER_OBJECT pDriverObject, _In_ PUNICODE_STRING pRe
 		return STATUS_FAILED_DRIVER_ENTRY;
 	}
 
+	// Register our registry filter
+	status = BoxDrvRegFilterInit(pDriverObject);
+	if (!NT_SUCCESS(status)) {
+		KdPrint(("BoxDrv: Failed to register our registry filter\r\n"));
+		return STATUS_FAILED_DRIVER_ENTRY;
+	}
+
 	return STATUS_SUCCESS;
 }
 
 VOID BoxDrvUnload(_In_ PDRIVER_OBJECT pDriverObject) {
-	PAGED_CODE();
-
 	PDEVICE_OBJECT pDeviceObject = pDriverObject->DeviceObject;
 	UNICODE_STRING dosDevice;
 
-	BoxDrvRegRemoveFilter();
+	PAGED_CODE();
+
+	BoxDrvRegFilterUnload();
 
 	RtlInitUnicodeString(&dosDevice, DOS_DEViCE_NAME);
 
-	// tear down virtual device in when unloading
 	IoDeleteSymbolicLink(&dosDevice);
 	if (pDeviceObject != NULL) {
 		IoDeleteDevice(pDeviceObject);
 	}
 
 	KdPrint(("BoxDrv: Driver unloaded\r\n"));
+}
+
+NTSTATUS BoxDrvIoControl(_In_ PDEVICE_OBJECT pDeviceObject, _Inout_ PIRP Irp) {
+	NTSTATUS status = STATUS_UNSUCCESSFUL;
+	PIO_STACK_LOCATION pIrpStack = NULL;
+	UINT32 dataWritten = 0;
+
+	UNREFERENCED_PARAMETER(pDeviceObject);
+	PAGED_CODE();
+
+	KdPrint(("BoxDrv: ===> IOCTL event\r\n"));
+	pIrpStack = IoGetCurrentIrpStackLocation(Irp);
+
+	// we handle IO control requests here
+	// controls we support are defined in <base.h> as BOXDRV_IO_* macros
+
+	if (pIrpStack) {
+		switch (pIrpStack->Parameters.DeviceIoControl.IoControlCode)
+		{
+		case BOXDRV_IO_ECHO:
+			status = BoxDrvIoEcho(Irp, pIrpStack, &dataWritten);
+			break;
+		case BOXDRV_IO_READLIST:
+			status = BoxDrvIoReadList(Irp, pIrpStack, &dataWritten);
+			break;
+		case BOXDRV_IO_WRITELIST:
+			status = BoxDrvIoWriteList(Irp, pIrpStack, &dataWritten);
+			break;
+		default:
+			KdPrint(("BoxDrv: Unknown IOCTL request received with control code: %lu", pIrpStack->Parameters.DeviceIoControl.IoControlCode));
+			break;
+		}
+	}
+
+	Irp->IoStatus.Status = status;
+	Irp->IoStatus.Information = dataWritten;
+
+	IoCompleteRequest(Irp, IO_NO_INCREMENT);
+
+	KdPrint(("BoxDrv: <=== IOCTL request\r\n"));
+
+	return status;
 }
 
 NTSTATUS BoxDrvCreateClose(_In_ PDEVICE_OBJECT pDeviceObject, _Inout_ PIRP Irp) {
@@ -112,6 +160,20 @@ NTSTATUS BoxDrvCreateClose(_In_ PDEVICE_OBJECT pDeviceObject, _Inout_ PIRP Irp) 
 	return STATUS_SUCCESS;
 }
 
+NTSTATUS BoxDrvReadWrite(_In_ PDEVICE_OBJECT pDeviceObject, _Inout_ PIRP Irp) {
+	UNREFERENCED_PARAMETER(pDeviceObject);
+	PAGED_CODE();
+
+	Irp->IoStatus.Status = STATUS_SUCCESS;
+	Irp->IoStatus.Information = 0;
+
+	IoCompleteRequest(Irp, IO_NO_INCREMENT);
+
+	KdPrint(("BoxDrv: IRP_MJ_READ/WRITE complete\r\n"));
+
+	return STATUS_SUCCESS;
+}
+
 NTSTATUS BoxDrvCleanup(_In_ PDEVICE_OBJECT pDeviceObject, _Inout_ PIRP Irp) {
 	UNREFERENCED_PARAMETER(pDeviceObject);
 	PAGED_CODE();
@@ -124,70 +186,6 @@ NTSTATUS BoxDrvCleanup(_In_ PDEVICE_OBJECT pDeviceObject, _Inout_ PIRP Irp) {
 	KdPrint(("BoxDrv: IRP_MJ_CLEANUP completed\r\n"));
 
 	return STATUS_SUCCESS;
-}
-
-NTSTATUS BoxDrvIoControl(_In_ PDEVICE_OBJECT pDeviceObject, _Inout_ PIRP Irp) {
-	UNREFERENCED_PARAMETER(pDeviceObject);
-	PAGED_CODE();
-
-	Irp->IoStatus.Status = STATUS_SUCCESS;
-	Irp->IoStatus.Information = 0;
-
-	IoCompleteRequest(Irp, IO_NO_INCREMENT);
-
-	KdPrint(("BoxDrv: IOCTL request complete\r\n"));
-
-	return STATUS_SUCCESS;
-}
-
-NTSTATUS BoxDrvRead(_In_ PDEVICE_OBJECT pDeviceObject, _Inout_ PIRP Irp) {
-	UNREFERENCED_PARAMETER(pDeviceObject);
-	PAGED_CODE();
-
-	Irp->IoStatus.Status = STATUS_SUCCESS;
-	Irp->IoStatus.Information = 0;
-
-	IoCompleteRequest(Irp, IO_NO_INCREMENT);
-
-	KdPrint(("BoxDrv: IRP_MJ_READ completed\r\n"));
-
-	return STATUS_SUCCESS;
-}
-
-NTSTATUS BoxDrvWrite(_In_ PDEVICE_OBJECT pDeviceObject, _Inout_ PIRP Irp) {
-	UNREFERENCED_PARAMETER(pDeviceObject);
-	PAGED_CODE();
-
-	NTSTATUS status = STATUS_SUCCESS;
-	PIO_STACK_LOCATION pIrpStack = NULL;
-	char* writeBuffer = NULL;
-	ULONG bufferLen = 0;
-
-	KdPrint(("BoxDrv: ==> IRP_MJ_WRITE\r\n"));
-
-	pIrpStack = IoGetCurrentIrpStackLocation(Irp);
-
-	if (pIrpStack) {
-		writeBuffer = (char*)Irp->AssociatedIrp.SystemBuffer;
-
-		if (writeBuffer) {
-			bufferLen = pIrpStack->Parameters.Write.Length;
-			KdPrint(("BoxDrv: Buffer length: %lu\r\n", bufferLen));
-
-			if (IsStringTerminated(writeBuffer, bufferLen)) {
-				KdPrint(("BoxDrv: Buffer: %s\r\n", writeBuffer));
-			}
-		}
-	}
-
-	Irp->IoStatus.Status = status;
-	Irp->IoStatus.Information = bufferLen;
-
-	IoCompleteRequest(Irp, IO_NO_INCREMENT);
-
-	KdPrint(("BoxDrv: <== IRP_MJ_WRITE\r\n"));
-
-	return status;
 }
 
 NTSTATUS BoxDrvUnsupported(_In_ PDEVICE_OBJECT pDeviceObject, _Inout_ PIRP Irp) {
